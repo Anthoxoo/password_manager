@@ -193,7 +193,7 @@ pub fn launch_program() -> PasswordManager {
 
         existing_manager
     } else {
-        create_config_folder(&file_path).expect("Error creating config file.");
+        create_folder(&file_path).expect("Error creating config file.");
         println!("Welcome on our password manager !");
 
         let new_master = dialoguer::Password::new()
@@ -215,17 +215,17 @@ pub fn launch_program() -> PasswordManager {
     }
 }
 
-pub fn create_config_folder(path: &str) -> Result<(), &'static str> {
-    if let Err(_) = fs::create_dir_all(&path) {
-        return Err("Error creating the password-manager folder.");
-    }
-    Ok(())
-}
-
 pub fn get_full_file_path(relative_path: &str) -> Result<String, &'static str> {
     if let Ok(home) = env::var("HOME") {
         return Ok(format!("{}{}", home, relative_path));
     } else {
         return Err("Couldn't find the HOME env variable.");
     }
+}
+
+pub fn create_folder(path: &str) -> Result<(), String> {
+    if let Err(_) = fs::create_dir_all(&path) {
+        return Err(format!("Error creating the {} folder", path));
+    }
+    Ok(())
 }
