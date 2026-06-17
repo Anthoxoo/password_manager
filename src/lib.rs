@@ -1,4 +1,5 @@
 use bcrypt::{DEFAULT_COST, hash, verify};
+use chrono::{DateTime, Duration, Utc};
 use magic_crypt::{MagicCrypt256, MagicCryptTrait, new_magic_crypt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,29 +42,31 @@ impl PasswordManager {
 
     pub fn load(path: String) -> Result<Self, &'static str> {
         let new_path = format!("{}/passwords.json", path);
-        // println!("{}", new_path);
         if let Ok(json_data) = fs::read_to_string(new_path) {
             // File exists
             if let Ok(mut manager) = serde_json::from_str::<PasswordManager>(&json_data) {
-                // problem is here
                 // We managed to read it properly
                 manager.state = State::Locked;
                 manager.encryption_key = None;
                 // no need for the master pass and the passwords because serde did it for us by serialize it from the json file.
                 return Ok(manager);
             } else {
-                println!("erreur serde")
+                return Err("Error reading from json file, serde?");
             }
         }
         Err("Error loading the password.json file.")
+    }
+
+    fn unlock_manager(&mut self, master_pass: String) {
+        self.state = State::Unlocked;
+        self.encryption_key = Some(master_pass);
     }
 
     pub fn open_manager(&mut self, master_pass: String) -> Result<(), &'static str> {
         if verify(&master_pass, &self.master_password)
             .expect("Error hashing password to verify it.")
         {
-            self.state = State::Unlocked;
-            self.encryption_key = Some(master_pass);
+            self.unlock_manager(master_pass);
             Ok(())
         } else {
             Err("Wrong password.")
@@ -154,12 +157,12 @@ impl PasswordManager {
         if self.state == State::Unlocked {
             return Err("The manager is unlocked, you must lock it before saving the file.");
         } else {
-            let new_path = format!("{}/passwords.json", path);
+            let new_config_path = format!("{}/passwords.json", path);
             let json_data =
                 serde_json::to_string_pretty(self).expect("Error serializing to the json format.");
 
-            fs::write(new_path, json_data).expect("Error trying to save the file on the disk.");
-
+            fs::write(new_config_path, json_data)
+                .expect("Error trying to save the file on the disk.");
             Ok(())
         }
     }
@@ -177,20 +180,44 @@ fn decrypt_password(password: String, key: MagicCrypt256) -> String {
 pub fn launch_program() -> PasswordManager {
     let file_path = get_full_file_path("/.config/password-manager")
         .expect("Couldn't find the HOME env variable.");
+    let tmp_file_path: &str = "/tmp/password-manager/timestamp.tmp";
 
-    // println!("{}", file_path);
     if let Ok(mut existing_manager) = PasswordManager::load(file_path.clone()) {
         // mut because open_manager takes a &mut self
+
+        let current_time = Utc::now();
+
+        if let Ok(tmp_file_content) = fs::read_to_string(tmp_file_path) {
+            let vec_content: Vec<&str> = tmp_file_content.split("|").collect();
+
+            let file_timestamp: DateTime<Utc> = vec_content[0].trim().parse().unwrap();
+            let input_master = vec_content[1].trim().to_string();
+            dbg!("{}", vec_content);
+
+            let ending_time = file_timestamp + Duration::minutes(5); // adds 5minutes to the time indicated in the tmp file.
+
+            if current_time < ending_time {
+                if existing_manager.open_manager(input_master.clone()).is_ok() {
+                    println!("ok");
+                    let tmp_txt: String = format!("{} | {}", Utc::now(), input_master);
+                    let _ = fs::write(tmp_file_path, tmp_txt);
+
+                    return existing_manager;
+                }
+            }
+        }
+
         let input_master = dialoguer::Password::new()
             .with_prompt("Enter your master password ")
             .interact()
             .unwrap();
 
-        if let Err(e) = existing_manager.open_manager(input_master) {
+        if let Err(e) = existing_manager.open_manager(input_master.clone()) {
             eprintln!("Denied acces ! : {}", e);
             process::exit(1);
         }
-
+        let tmp_txt: String = format!("{} | {}", Utc::now(), input_master);
+        let _ = fs::write(tmp_file_path, tmp_txt);
         existing_manager
     } else {
         create_folder(&file_path).expect("Error creating config file.");
@@ -209,8 +236,12 @@ pub fn launch_program() -> PasswordManager {
         }
 
         new_manager
-            .open_manager(new_master)
+            .open_manager(new_master.clone())
             .expect("Error opening manager");
+
+        let tmp_txt: String = format!("{} | {}", Utc::now(), new_master);
+        let _ = fs::write(tmp_file_path, tmp_txt);
+
         new_manager
     }
 }

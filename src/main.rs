@@ -42,8 +42,10 @@ fn main() {
 
     let file_path = get_full_file_path("/.config/password-manager")
         .expect("Couldn't find the HOME env variable.");
+    let tmp_file_path = "/tmp/password-manager";
 
     create_folder(&file_path).expect("Error creating or finding the folder.");
+    create_folder(&tmp_file_path).expect("Error creating the tmp folder");
 
     let mut manager = launch_program();
 
