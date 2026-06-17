@@ -1,2 +1,4 @@
-- make my own cypher algorithm
+- (make my own cypher algorithm)
 - when user typed his password, no need to ask for 3min or smth
+  - ways to do it :
+    - create a folder and a file in the /tmp folder and put in it a timestamp of x minutes
