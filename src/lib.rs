@@ -76,7 +76,7 @@ impl PasswordManager {
     pub fn close_manager(&mut self, path: String) {
         self.state = State::Locked;
         self.encryption_key = None;
-        self.save_file(path).expect("Error saving the file.")
+        self.save_config_file(path).expect("Error saving the file.")
     }
 
     pub fn add_password(
@@ -153,7 +153,7 @@ impl PasswordManager {
         Ok(())
     }
 
-    fn save_file(&self, path: String) -> Result<(), &'static str> {
+    fn save_config_file(&self, path: String) -> Result<(), &'static str> {
         if self.state == State::Unlocked {
             return Err("The manager is unlocked, you must lock it before saving the file.");
         } else {
@@ -192,15 +192,12 @@ pub fn launch_program() -> PasswordManager {
 
             let file_timestamp: DateTime<Utc> = vec_content[0].trim().parse().unwrap();
             let input_master = vec_content[1].trim().to_string();
-            dbg!("{}", vec_content);
 
             let ending_time = file_timestamp + Duration::minutes(5); // adds 5minutes to the time indicated in the tmp file.
 
             if current_time < ending_time {
                 if existing_manager.open_manager(input_master.clone()).is_ok() {
-                    println!("ok");
-                    let tmp_txt: String = format!("{} | {}", Utc::now(), input_master);
-                    let _ = fs::write(tmp_file_path, tmp_txt);
+                    save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
 
                     return existing_manager;
                 }
@@ -216,8 +213,9 @@ pub fn launch_program() -> PasswordManager {
             eprintln!("Denied acces ! : {}", e);
             process::exit(1);
         }
-        let tmp_txt: String = format!("{} | {}", Utc::now(), input_master);
-        let _ = fs::write(tmp_file_path, tmp_txt);
+
+        save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
+
         existing_manager
     } else {
         create_folder(&file_path).expect("Error creating config file.");
@@ -230,7 +228,7 @@ pub fn launch_program() -> PasswordManager {
 
         let mut new_manager = PasswordManager::new(new_master.clone());
 
-        if let Err(e) = new_manager.save_file(file_path.clone()) {
+        if let Err(e) = new_manager.save_config_file(file_path.clone()) {
             eprintln!("Error while saving the file on the disk : {}", e);
             process::exit(1);
         }
@@ -239,8 +237,7 @@ pub fn launch_program() -> PasswordManager {
             .open_manager(new_master.clone())
             .expect("Error opening manager");
 
-        let tmp_txt: String = format!("{} | {}", Utc::now(), new_master);
-        let _ = fs::write(tmp_file_path, tmp_txt);
+        save_tmp_file(tmp_file_path, new_master).expect("Error saving the tmp file");
 
         new_manager
     }
@@ -258,5 +255,11 @@ pub fn create_folder(path: &str) -> Result<(), String> {
     if let Err(_) = fs::create_dir_all(&path) {
         return Err(format!("Error creating the {} folder", path));
     }
+    Ok(())
+}
+
+fn save_tmp_file(path: &str, txt: String) -> Result<(), &'static str> {
+    let tmp_txt: String = format!("{} | {}", Utc::now(), txt);
+    fs::write(path, tmp_txt).expect("Error creating and / or writing in the tmp file.");
     Ok(())
 }
