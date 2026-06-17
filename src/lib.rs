@@ -29,6 +29,73 @@ enum State {
     Locked,
     Unlocked,
 }
+
+pub fn launch_program() -> PasswordManager {
+    let file_path = get_full_file_path("/.config/password-manager")
+        .expect("Couldn't find the HOME env variable.");
+    let tmp_file_path: &str = "/tmp/password-manager/timestamp.tmp";
+
+    if let Ok(mut existing_manager) = PasswordManager::load(file_path.clone()) {
+        // mut because open_manager takes a &mut self
+
+        let current_time = Utc::now();
+
+        if let Ok(tmp_file_content) = fs::read_to_string(tmp_file_path) {
+            let vec_content: Vec<&str> = tmp_file_content.split("|").collect();
+
+            let file_timestamp: DateTime<Utc> = vec_content[0].trim().parse().unwrap();
+            let input_master = vec_content[1].trim().to_string();
+
+            let ending_time = file_timestamp + Duration::minutes(5); // adds 5minutes to the time indicated in the tmp file.
+
+            if current_time < ending_time {
+                if existing_manager.open_manager(input_master.clone()).is_ok() {
+                    save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
+
+                    return existing_manager;
+                }
+            }
+        }
+
+        let input_master = dialoguer::Password::new()
+            .with_prompt("Enter your master password ")
+            .interact()
+            .unwrap();
+
+        if let Err(e) = existing_manager.open_manager(input_master.clone()) {
+            eprintln!("Denied acces ! : {}", e);
+            process::exit(1);
+        }
+
+        save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
+
+        existing_manager
+    } else {
+        create_folder(&file_path).expect("Error creating config file.");
+        println!("Welcome on our password manager !");
+
+        let new_master = dialoguer::Password::new()
+            .with_prompt("Create a master password (you'll have to remember it !!)")
+            .interact()
+            .unwrap();
+
+        let mut new_manager = PasswordManager::new(new_master.clone());
+
+        if let Err(e) = new_manager.save_config_file(file_path.clone()) {
+            eprintln!("Error while saving the file on the disk : {}", e);
+            process::exit(1);
+        }
+
+        new_manager
+            .open_manager(new_master.clone())
+            .expect("Error opening manager");
+
+        save_tmp_file(tmp_file_path, new_master).expect("Error saving the tmp file");
+
+        new_manager
+    }
+}
+
 impl PasswordManager {
     pub fn new(master_password: String) -> Self {
         PasswordManager {
@@ -57,11 +124,6 @@ impl PasswordManager {
         Err("Error loading the password.json file.")
     }
 
-    fn unlock_manager(&mut self, master_pass: String) {
-        self.state = State::Unlocked;
-        self.encryption_key = Some(master_pass);
-    }
-
     pub fn open_manager(&mut self, master_pass: String) -> Result<(), &'static str> {
         if verify(&master_pass, &self.master_password)
             .expect("Error hashing password to verify it.")
@@ -71,6 +133,11 @@ impl PasswordManager {
         } else {
             Err("Wrong password.")
         }
+    }
+
+    fn unlock_manager(&mut self, master_pass: String) {
+        self.state = State::Unlocked;
+        self.encryption_key = Some(master_pass);
     }
 
     pub fn close_manager(&mut self, path: String) {
@@ -168,79 +235,10 @@ impl PasswordManager {
     }
 }
 
-fn encrypt_password(password: String, key: MagicCrypt256) -> String {
-    key.encrypt_str_to_base64(password)
-}
-
-fn decrypt_password(password: String, key: MagicCrypt256) -> String {
-    key.decrypt_base64_to_string(password)
-        .expect("Error decrypting the password.")
-}
-
-pub fn launch_program() -> PasswordManager {
-    let file_path = get_full_file_path("/.config/password-manager")
-        .expect("Couldn't find the HOME env variable.");
-    let tmp_file_path: &str = "/tmp/password-manager/timestamp.tmp";
-
-    if let Ok(mut existing_manager) = PasswordManager::load(file_path.clone()) {
-        // mut because open_manager takes a &mut self
-
-        let current_time = Utc::now();
-
-        if let Ok(tmp_file_content) = fs::read_to_string(tmp_file_path) {
-            let vec_content: Vec<&str> = tmp_file_content.split("|").collect();
-
-            let file_timestamp: DateTime<Utc> = vec_content[0].trim().parse().unwrap();
-            let input_master = vec_content[1].trim().to_string();
-
-            let ending_time = file_timestamp + Duration::minutes(5); // adds 5minutes to the time indicated in the tmp file.
-
-            if current_time < ending_time {
-                if existing_manager.open_manager(input_master.clone()).is_ok() {
-                    save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
-
-                    return existing_manager;
-                }
-            }
-        }
-
-        let input_master = dialoguer::Password::new()
-            .with_prompt("Enter your master password ")
-            .interact()
-            .unwrap();
-
-        if let Err(e) = existing_manager.open_manager(input_master.clone()) {
-            eprintln!("Denied acces ! : {}", e);
-            process::exit(1);
-        }
-
-        save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
-
-        existing_manager
-    } else {
-        create_folder(&file_path).expect("Error creating config file.");
-        println!("Welcome on our password manager !");
-
-        let new_master = dialoguer::Password::new()
-            .with_prompt("Create a master password (you'll have to remember it !!)")
-            .interact()
-            .unwrap();
-
-        let mut new_manager = PasswordManager::new(new_master.clone());
-
-        if let Err(e) = new_manager.save_config_file(file_path.clone()) {
-            eprintln!("Error while saving the file on the disk : {}", e);
-            process::exit(1);
-        }
-
-        new_manager
-            .open_manager(new_master.clone())
-            .expect("Error opening manager");
-
-        save_tmp_file(tmp_file_path, new_master).expect("Error saving the tmp file");
-
-        new_manager
-    }
+fn save_tmp_file(path: &str, txt: String) -> Result<(), &'static str> {
+    let tmp_txt: String = format!("{} | {}", Utc::now(), txt);
+    fs::write(path, tmp_txt).expect("Error creating and / or writing in the tmp file.");
+    Ok(())
 }
 
 pub fn get_full_file_path(relative_path: &str) -> Result<String, &'static str> {
@@ -258,8 +256,11 @@ pub fn create_folder(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn save_tmp_file(path: &str, txt: String) -> Result<(), &'static str> {
-    let tmp_txt: String = format!("{} | {}", Utc::now(), txt);
-    fs::write(path, tmp_txt).expect("Error creating and / or writing in the tmp file.");
-    Ok(())
+fn encrypt_password(password: String, key: MagicCrypt256) -> String {
+    key.encrypt_str_to_base64(password)
+}
+
+fn decrypt_password(password: String, key: MagicCrypt256) -> String {
+    key.decrypt_base64_to_string(password)
+        .expect("Error decrypting the password.")
 }
