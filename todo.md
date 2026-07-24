@@ -1,1 +1,1 @@
-- (make my own cypher algorithm)
+- Make a desktop app using tauri !
