@@ -1,5 +1,4 @@
 use bcrypt::{DEFAULT_COST, hash, verify};
-use chrono::{DateTime, Duration, Utc};
 use magic_crypt::{MagicCrypt256, MagicCryptTrait, new_magic_crypt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,29 +32,9 @@ enum State {
 pub fn launch_program() -> PasswordManager {
     let file_path = get_full_file_path("/.config/password-manager")
         .expect("Couldn't find the HOME env variable.");
-    let tmp_file_path: &str = "/tmp/password-manager/timestamp.tmp";
 
     if let Ok(mut existing_manager) = PasswordManager::load(file_path.clone()) {
         // mut because open_manager takes a &mut self
-
-        let current_time = Utc::now();
-
-        if let Ok(tmp_file_content) = fs::read_to_string(tmp_file_path) {
-            let vec_content: Vec<&str> = tmp_file_content.split("|").collect();
-
-            let file_timestamp: DateTime<Utc> = vec_content[0].trim().parse().unwrap();
-            let input_master = vec_content[1].trim().to_string();
-
-            let ending_time = file_timestamp + Duration::minutes(5); // adds 5minutes to the time indicated in the tmp file.
-
-            if current_time < ending_time {
-                if existing_manager.open_manager(input_master.clone()).is_ok() {
-                    save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
-
-                    return existing_manager;
-                }
-            }
-        }
 
         let input_master = dialoguer::Password::new()
             .with_prompt("Enter your master password ")
@@ -66,8 +45,6 @@ pub fn launch_program() -> PasswordManager {
             eprintln!("Denied acces ! : {}", e);
             process::exit(1);
         }
-
-        save_tmp_file(tmp_file_path, input_master).expect("Error saving the tmp file");
 
         existing_manager
     } else {
@@ -89,8 +66,6 @@ pub fn launch_program() -> PasswordManager {
         new_manager
             .open_manager(new_master.clone())
             .expect("Error opening manager");
-
-        save_tmp_file(tmp_file_path, new_master).expect("Error saving the tmp file");
 
         new_manager
     }
@@ -233,12 +208,6 @@ impl PasswordManager {
             Ok(())
         }
     }
-}
-
-fn save_tmp_file(path: &str, txt: String) -> Result<(), &'static str> {
-    let tmp_txt: String = format!("{} | {}", Utc::now(), txt);
-    fs::write(path, tmp_txt).expect("Error creating and / or writing in the tmp file.");
-    Ok(())
 }
 
 pub fn get_full_file_path(relative_path: &str) -> Result<String, &'static str> {
