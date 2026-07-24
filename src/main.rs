@@ -45,7 +45,7 @@ fn main() {
     let tmp_file_path = "/tmp/password-manager";
 
     create_folder(&file_path).expect("Error creating or finding the folder.");
-    create_folder(&tmp_file_path).expect("Error creating the tmp folder");
+    create_folder(tmp_file_path).expect("Error creating the tmp folder");
 
     let mut manager = launch_program();
 

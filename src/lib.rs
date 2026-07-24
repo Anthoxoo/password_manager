@@ -134,7 +134,7 @@ impl PasswordManager {
             let mc = new_magic_crypt!(key, 256);
 
             let new_password = Password {
-                username: username,
+                username,
                 password: encrypt_password(password, mc),
             };
 
@@ -197,7 +197,7 @@ impl PasswordManager {
 
     fn save_config_file(&self, path: String) -> Result<(), &'static str> {
         if self.state == State::Unlocked {
-            return Err("The manager is unlocked, you must lock it before saving the file.");
+            Err("The manager is unlocked, you must lock it before saving the file.")
         } else {
             let new_config_path = format!("{}/passwords.json", path);
             let json_data =
@@ -212,14 +212,14 @@ impl PasswordManager {
 
 pub fn get_full_file_path(relative_path: &str) -> Result<String, &'static str> {
     if let Ok(home) = env::var("HOME") {
-        return Ok(format!("{}{}", home, relative_path));
+        Ok(format!("{}{}", home, relative_path))
     } else {
-        return Err("Couldn't find the HOME env variable.");
+        Err("Couldn't find the HOME env variable.")
     }
 }
 
 pub fn create_folder(path: &str) -> Result<(), String> {
-    if let Err(_) = fs::create_dir_all(&path) {
+    if fs::create_dir_all(path).is_err() {
         return Err(format!("Error creating the {} folder", path));
     }
     Ok(())
